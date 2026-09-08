@@ -20,6 +20,14 @@ Built with Swift, SwiftUI, AppKit and AVFoundation. Runs on **macOS 13 or later*
 - **WAV kit export:** bank folders with 44.1 kHz / 16-bit PCM WAV files and a CSV pad map.
 - **Local storage:** managed audio copies and automatically saved assignments.
 
+## Install and update
+
+[Download the latest release](https://github.com/VictorBischoff/PadShelf/releases/latest).
+
+In the app, choose **PadShelf → Check for Updates…**. If a newer stable release exists, click **Download update**. PadShelf downloads the installer from this repository, verifies its size and GitHub SHA-256 checksum, and opens it. Quit the old app, drag the new app into Applications and choose Replace. Your local sample library and settings remain in Application Support.
+
+Update checks run only when requested. They do not interrupt imports or SD-card writes. Downloads that fail verification are not opened. GitHub outages, request limits and missing releases are reported in the update window. This is an installer-assisted update; the app does not silently replace itself.
+
 ## Get started
 
 Open the disk image and drag `PadShelf.app` to Applications, or open the app directly from the ZIP. The packaged app is locally signed; it is not an Apple-notarized release.
@@ -92,13 +100,34 @@ swift run PadShelf
 
 For the full app icon and bundle behavior, use `./build.sh` and open the resulting app bundle.
 
+## Fetch source updates
+
+For a local source checkout with Git and Apple's developer tools installed:
+
+```sh
+./scripts/update.sh
+```
+
+The script requires a clean `main` branch, fetches `origin/main`, merges only when it can fast-forward, runs tests and builds a new installer. It never discards local changes or forces a merge.
+
+## Publish a release
+
+The GitHub repository is [VictorBischoff/PadShelf](https://github.com/VictorBischoff/PadShelf). Release creation requires the GitHub CLI signed in with repository write access.
+
+1. Change `VERSION` to a new stable version such as `1.4.1`, and commit your changes on `main`.
+2. Run `./scripts/release.sh`.
+
+The script fetches the latest source, runs tests, builds and verifies the universal app and disk image, pushes `main` and an annotated `vVERSION` tag, and creates a GitHub release with `PadShelf-macOS.dmg` and `PadShelf-macOS.zip`. GitHub supplies the digest used by the in-app checker. Published stable releases become available through **Check for Updates**. Keep those asset names unchanged.
+
+If a release upload is interrupted after pushing its tag, use `gh release create` or the GitHub release page to finish publishing that existing tag. The script deliberately refuses to replace an existing local tag.
+
 ## Tests
 
 ```sh
 swift test
 ```
 
-Eight automated tests cover batch import, category changes, managed copies, persistence, per-pad and bank-wide channel settings, direct card writing on temporary replicas, header validation, preservation of other pads, rollback, concurrent card changes and malformed input. The optional ninth test skips unless a card path is provided:
+Eleven automated tests cover batch import, category changes, managed copies, persistence, per-pad and bank-wide channel settings, direct card writing on temporary replicas, header validation, preservation of other pads, rollback, concurrent card changes and malformed input. Update-specific tests check version ordering, release-origin restrictions and checksum failure handling. The optional twelfth test skips unless a card path is provided:
 
 ```sh
 PADSHELF_TEST_CARD='/Volumes/SP-404SX' swift test --filter CardTests.testMountedCardReadOnlyWhenProvided
@@ -116,9 +145,13 @@ Sources/PadShelf/
   PadShelf.swift                App interface, sample library and WAV export
   CardConnection.swift          Card detection, write review and eject controls
   CardWriter.swift              Roland file encoding, backup, write and rollback
+  AppUpdater.swift              GitHub release checks and verified installer downloads
 Tests/PadShelfTests/             Library and card-writer tests
 scripts/build-icon.sh           macOS icon packaging
 scripts/package-dmg.sh          Installable disk image packaging
+scripts/update.sh               Fetch source and rebuild
+scripts/release.sh              Test, build and publish a GitHub release
+VERSION                         Release version used in the app bundle
 build.sh                        Universal app build and local signing
 Package.swift                   Swift package definition
 ```

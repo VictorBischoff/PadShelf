@@ -1,6 +1,8 @@
 #!/bin/zsh
 set -eu
 cd "${0:A:h}"
+VERSION=$(cat VERSION)
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid VERSION" >&2; exit 1; }
 ./scripts/build-icon.sh
 swift build -c release --arch arm64 --arch x86_64
 APP="../PadShelf.app"
@@ -18,12 +20,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleDisplayName</key><string>PadShelf</string>
 <key>CFBundleIconFile</key><string>PadShelf</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.3.1</string>
-<key>CFBundleVersion</key><string>5</string>
+<key>CFBundleShortVersionString</key><string>0.0.0</string>
+<key>CFBundleVersion</key><string>6</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>
 PLIST
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 codesign --force --sign - "$APP"
 echo "Built $APP"

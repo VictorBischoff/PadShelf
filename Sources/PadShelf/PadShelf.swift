@@ -419,8 +419,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main struct PadShelfApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject var library = Library()
+    @StateObject var updater = AppUpdater()
     var body: some Scene {
-        WindowGroup("PadShelf") { ContentView().environmentObject(library) }.defaultSize(width: 1120, height: 860)
-        .commands { CommandGroup(replacing: .newItem) { Button("Import sounds…") { library.chooseImport() }.keyboardShortcut("i"); Button("Export WAV kit…") { library.export() }.keyboardShortcut("e").disabled(library.session.pads.isEmpty || library.busy) }; CommandGroup(after: .pasteboard) { Button("Stop preview") { library.stop() }.keyboardShortcut(".") } }
+        WindowGroup("PadShelf") { ContentView().environmentObject(library).sheet(isPresented: $updater.presented) { UpdateView(updater: updater) } }.defaultSize(width: 1120, height: 860)
+        .commands { CommandGroup(after: .appInfo) { Button("Check for Updates…") { updater.check() }.disabled(library.busy || updater.working) }; CommandGroup(replacing: .newItem) { Button("Import sounds…") { library.chooseImport() }.keyboardShortcut("i"); Button("Export WAV kit…") { library.export() }.keyboardShortcut("e").disabled(library.session.pads.isEmpty || library.busy) }; CommandGroup(after: .pasteboard) { Button("Stop preview") { library.stop() }.keyboardShortcut(".") } }
     }
 }
