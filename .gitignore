@@ -1,0 +1,18 @@
+# Swift and Xcode build products
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# macOS metadata and packaged releases
+.DS_Store
+._*
+*.app/
+*.dmg
+*.zip
+
+# Local audio libraries and card backups
+Audio/
+Card backups/
+Library.json
