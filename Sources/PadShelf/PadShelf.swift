@@ -5,16 +5,9 @@ import UniformTypeIdentifiers
 
 let accent = Color(red: 0.96, green: 0.40, blue: 0.22)
 let surface = Color(red: 0.105, green: 0.115, blue: 0.125)
-let categories = ["Kick", "Snare", "Hi-hat", "Percussion", "Bass", "Melodic", "Vocal", "FX", "Unsorted"]
 let banks = Array("ABCDEFGHIJ").map(String.init)
 func categoryColor(_ category: String) -> Color {
-    switch category { case "Kick": return accent; case "Snare": return .yellow; case "Hi-hat": return .mint; case "Percussion": return .green; case "Bass": return .purple; case "Melodic": return .cyan; case "Vocal": return .pink; case "FX": return .indigo; default: return .gray }
-}
-func classify(_ name: String) -> String {
-    let s = name.lowercased().replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
-    let rules: [(String, [String])] = [("Hi-hat", ["hihat", "hi hat", "hat", "hh", "oh", "ch"]), ("Kick", ["kick", "kik", "bd"]), ("Snare", ["snare", "clap", "rim", "sd"]), ("Percussion", ["perc", "conga", "bongo", "shaker", "tom", "cymbal", "ride", "crash"]), ("Bass", ["bass", "sub", "808"]), ("Vocal", ["vocal", "vox", "voice", "acapella"]), ("FX", ["fx", "riser", "impact", "sweep", "noise"]), ("Melodic", ["melod", "piano", "keys", "chord", "guitar", "synth", "string", "organ", "flute", "pad", "loop"])]
-    let tokens = s.components(separatedBy: CharacterSet.alphanumerics.inverted)
-    return rules.first { _, words in words.contains { w in w.count <= 3 ? tokens.contains(w) : s.contains(w) } }?.0 ?? "Unsorted"
+    switch category { case "Kick": return accent; case "Snare": return .yellow; case "Hi-hat", "Open hi-hat", "Closed hi-hat": return .mint; case "Crash", "Ride", "Splash", "China", "Cymbal": return .teal; case "Bell", "Cowbell": return .orange; case "Clap", "Rimshot": return .yellow; case "Percussion", "Tom", "Shaker", "Tambourine", "Conga", "Bongo": return .green; case "Bass": return .purple; case "Melodic": return .cyan; case "Vocal": return .pink; case "FX": return .indigo; default: return .gray }
 }
 struct Sample: Identifiable, Codable {
     var id: UUID
@@ -24,6 +17,8 @@ struct Sample: Identifiable, Codable {
     var duration: Double
     var rate: Double
     var channels: Int
+    var categoryIsManual: Bool? = nil
+    var sourceFolders: [String]? = nil
 }
 struct Session: Codable { var samples: [Sample] = []; var pads: [String: UUID] = [:]; var modes: [String: String]? = [:] }
 struct AppFailure: LocalizedError { var message: String; var errorDescription: String? { message } }
@@ -32,6 +27,8 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
     @Published var session = Session()
     @Published var category = "All sounds"
     @Published var search = ""
+    @Published var sort: SampleSort = .name
+    @Published var classificationUndo: [UUID: Sample] = [:]
     @Published var bank = "A"
     @Published var selected: UUID?
     @Published var playing: UUID?
@@ -56,7 +53,7 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
         } catch { writable = false; self.error = "Could not open your library. Existing data has been preserved. \(error.localizedDescription)" }
         if storage == nil { startCardMonitoring() }
     }
-    var visible: [Sample] { session.samples.filter { (category == "All sounds" || $0.category == category) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
+    var visible: [Sample] { sort.ordered(session.samples.filter { (category == "All sounds" || $0.category == category) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) }) }
     func url(_ sample: Sample) -> URL { root.appendingPathComponent("Audio").appendingPathComponent(sample.file) }
     func sample(_ id: UUID?) -> Sample? { session.samples.first { $0.id == id } }
     func key(_ pad: Int) -> String { "\(bank)-\(pad)" }
@@ -90,8 +87,11 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
                         let audio = try AVAudioFile(forReading: file)
                         guard audio.length > 0, audio.processingFormat.channelCount <= 2 else { throw AppFailure(message: "Only nonempty mono or stereo audio is supported") }
                         let id = UUID(); let filename = id.uuidString + "." + file.pathExtension
+                        var parent = file.deletingLastPathComponent()
+                        var folders: [String] = []
+                        for _ in 0..<3 { if parent.path == "/" { break }; folders.append(parent.lastPathComponent); parent.deleteLastPathComponent() }
                         try FileManager.default.copyItem(at: file, to: destination.appendingPathComponent(filename))
-                        added.append(Sample(id: id, name: file.deletingPathExtension().lastPathComponent, file: filename, category: classify(file.deletingPathExtension().lastPathComponent), duration: Double(audio.length) / audio.processingFormat.sampleRate, rate: audio.processingFormat.sampleRate, channels: Int(audio.processingFormat.channelCount)))
+                        added.append(Sample(id: id, name: file.deletingPathExtension().lastPathComponent, file: filename, category: SoundClassifier.classify(file.deletingPathExtension().lastPathComponent, folders: folders), duration: Double(audio.length) / audio.processingFormat.sampleRate, rate: audio.processingFormat.sampleRate, channels: Int(audio.processingFormat.channelCount), categoryIsManual: false, sourceFolders: folders))
                     } catch { failures.append("\(file.lastPathComponent): \(error.localizedDescription)") }
                 }
                 return (added, failures)
@@ -135,7 +135,38 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
         status = "Bank \(bank): \(count) assigned pads set to \(mode.lowercased())."
     }
     func clear(_ pad: Int) { session.pads.removeValue(forKey: key(pad)); save() }
-    func recategorize(_ id: UUID, _ value: String) { if let i = session.samples.firstIndex(where: { $0.id == id }) { session.samples[i].category = value; save() } }
+    func recategorize(_ id: UUID, _ value: String) { if let i = session.samples.firstIndex(where: { $0.id == id }) { session.samples[i].category = value; session.samples[i].categoryIsManual = true; classificationUndo.removeValue(forKey: id); save() } }
+    func reclassify(includeManual: Bool = false) {
+        guard !busy, writable else { return }
+        classificationUndo = [:]
+        for i in session.samples.indices {
+            let sample = session.samples[i]
+            let eligible = sample.categoryIsManual == false || (sample.categoryIsManual == nil && sample.category == "Unsorted")
+            guard includeManual || eligible else { continue }
+            let updated = SoundClassifier.classify(sample.name, folders: sample.sourceFolders ?? [])
+            guard updated != sample.category || sample.categoryIsManual != false else { continue }
+            classificationUndo[sample.id] = sample
+            session.samples[i].category = updated
+            session.samples[i].categoryIsManual = false
+        }
+        save(); status = "Re-sorted \(classificationUndo.count) sounds. Pad assignments are unchanged."
+    }
+    func confirmReclassifyAll() {
+        let alert = NSAlert(); alert.messageText = "Re-sort all sounds?"
+        alert.informativeText = "This replaces all sound categories, including your manual choices, using filename and saved folder hints. Pad assignments stay in place. You can undo this re-sort."
+        alert.addButton(withTitle: "Re-sort all"); alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn { reclassify(includeManual: true) }
+    }
+    func undoReclassification() {
+        guard !busy, writable else { return }
+        for i in session.samples.indices {
+            if let original = classificationUndo[session.samples[i].id] {
+                session.samples[i].category = original.category
+                session.samples[i].categoryIsManual = original.categoryIsManual
+            }
+        }
+        classificationUndo = [:]; save(); status = "Previous sound categories restored."
+    }
     func remove(_ id: UUID) {
         if playing == id { stop() }
         session.samples.removeAll { $0.id == id }; session.pads = session.pads.filter { $0.value != id }; if selected == id { selected = nil }; save()
@@ -240,17 +271,12 @@ struct ContentView: View {
                 Divider()
                 soundList.frame(minWidth: 285, idealWidth: 340, maxWidth: 420)
                 Divider()
-                pads.frame(minWidth: 460, maxWidth: .infinity)
+                ScrollView { pads }.frame(minWidth: 460, maxWidth: .infinity)
             }
             Divider()
-            HStack {
-                Circle().fill(library.busy ? Color.yellow : Color.green).frame(width: 5, height: 5)
-                Text(library.status)
-                Spacer()
-                Text("LOCAL LIBRARY  /  AUTO-SAVED").tracking(1).font(.system(size: 9, design: .monospaced))
-            }.font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 20).frame(height: 32).background(surface)
+            StatusFooter(status: library.status, busy: library.busy)
         }.background(Color(red: 0.07, green: 0.08, blue: 0.09)).preferredColorScheme(.dark)
-        .frame(minWidth: 1000, minHeight: 820)
+        .frame(minWidth: 1000, minHeight: 600)
         .alert("PadShelf", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) { Button("OK") { library.error = nil } } message: { Text(library.error ?? "") }
     }
     var cardConnection: some View {
@@ -284,7 +310,7 @@ struct ContentView: View {
             categoryRow("All sounds", icon: "square.stack.3d.up")
             Divider().padding(.vertical, 12)
             Text("SOUND TYPE").font(.system(size: 10, weight: .semibold)).tracking(1.5).foregroundStyle(.secondary).padding(.bottom, 9)
-            ForEach(categories, id: \.self) { category in categoryRow(category, icon: "circle.fill") }
+            ScrollView { VStack(spacing: 5) { ForEach(categories, id: \.self) { category in categoryRow(category, icon: "circle.fill") } } }
             Spacer()
             Image(systemName: "internaldrive").font(.title2).foregroundStyle(.secondary)
             Text("Made for your Mac.").font(.system(size: 12, weight: .medium))
@@ -305,7 +331,17 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack { Text(library.category).font(.system(size: 22, weight: .semibold)); Spacer(); Text("\(library.visible.count)").foregroundStyle(.secondary) }.padding(.bottom, 5)
             Text("Preview a sound. Drag it to a pad.").font(.system(size: 12)).foregroundStyle(.secondary)
-            TextField("Search sounds", text: $library.search).textFieldStyle(.roundedBorder).padding(.vertical, 18)
+            TextField("Search sounds", text: $library.search).textFieldStyle(.roundedBorder).padding(.top, 14).padding(.bottom, 10)
+            HStack {
+                Picker("Sort", selection: $library.sort) { ForEach(SampleSort.allCases) { Text($0.rawValue).tag($0) } }.frame(maxWidth: 185)
+                Spacer(minLength: 4)
+                Menu("Re-sort") {
+                    Button("Unsorted & automatic categories") { library.reclassify() }
+                    Button("All sounds, including manual…") { library.confirmReclassifyAll() }
+                    Divider()
+                    Button("Undo last re-sort") { library.undoReclassification() }.disabled(library.classificationUndo.isEmpty)
+                }.fixedSize().disabled(library.busy || library.session.samples.isEmpty)
+            }.controlSize(.small).padding(.bottom, 12)
             if library.visible.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "waveform.badge.plus").font(.system(size: 36, weight: .light)).foregroundStyle(accent)
@@ -339,7 +375,7 @@ struct ContentView: View {
                 }
             }
             Divider().padding(.top, 12)
-            Text("Types are suggested from filenames.\nRight-click a sound to change its type.").font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 12)
+            Text("Types use filenames and folder hints.\nRight-click to set a type; Re-sort to update.").font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 12)
         }.padding(20).background(libraryDrop ? accent.opacity(0.06) : .clear)
         .onDrop(of: [UTType.fileURL], isTargeted: $libraryDrop) { library.receive($0) }
     }
@@ -377,7 +413,7 @@ struct ContentView: View {
                 Spacer()
                 if library.playing != nil { Button { library.stop() } label: { Image(systemName: "stop.fill") } }
             }.padding(14).background(surface).clipShape(RoundedRectangle(cornerRadius: 8))
-            Text("Write SD card applies your assignments directly to the sampler card.\nUnassigned pads keep their card sounds. Preview uses the original audio.").font(.system(size: 10)).foregroundStyle(.secondary)
+            Text("Write SD card applies your assignments directly to the sampler card. Unassigned pads keep their card sounds. Preview uses the original audio.").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.padding(24)
     }
 }

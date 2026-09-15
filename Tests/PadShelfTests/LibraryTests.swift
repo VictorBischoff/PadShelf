@@ -4,7 +4,7 @@ import AVFoundation
 final class LibraryTests: XCTestCase {
     func testFilenameTypes() {
         XCTAssertEqual(classify("808_kick_01"), "Kick")
-        XCTAssertEqual(classify("closed-hihat"), "Hi-hat")
+        XCTAssertEqual(classify("closed-hihat"), "Closed hi-hat")
         XCTAssertEqual(classify("warm_piano_loop"), "Melodic")
         XCTAssertEqual(classify("recording_07"), "Unsorted")
     }

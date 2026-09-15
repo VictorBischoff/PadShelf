@@ -11,13 +11,15 @@ Built with Swift, SwiftUI, AppKit and AVFoundation. Runs on **macOS 13 or later*
 ## Features
 
 - **Batch import:** select multiple files or drop whole folders into the library.
-- **Sound categories:** kick, snare, hi-hat, percussion, bass, melodic, vocal, FX and unsorted; suggestions come from filenames and are editable.
+- **Sound categories:** kick, snare, clap, rimshot, generic/open/closed hi-hat, crash, ride, splash, china, cymbal, bell, cowbell, tom, shaker, tambourine, conga, bongo, percussion, bass, melodic, vocal, FX and unsorted. Suggestions use filename tokens and folder hints and remain editable.
 - **Pad arrangement:** ten banks, A–J, with twelve pads each. Drag sounds onto pads or use the assignment context menu.
 - **Audio preview:** audition samples from the library or assigned pads.
 - **Stereo/Mono:** choose per pad or apply to every assigned pad in a bank.
 - **Direct SD-card writing:** automatic card detection, Roland sample headers, hardware filenames and pad metadata.
 - **Backups and verification:** local backups before replacement, verified writes, and rollback on recoverable write failures.
 - **WAV kit export:** bank folders with 44.1 kHz / 16-bit PCM WAV files and a CSV pad map.
+- **Flexible layout:** the footer wraps long messages, while pad and category panels scroll in shorter windows.
+- **List sorting:** natural filename order, sound type, shortest first or longest first.
 - **Local storage:** managed audio copies and automatically saved assignments.
 
 ## Install and update
@@ -40,6 +42,16 @@ Open the disk image and drag `PadShelf.app` to Applications, or open the app dir
 6. Click **Write SD card**, review the pad list, and confirm. Wait for verification, then click **Eject**. Insert the card into the powered-off sampler and turn it on.
 
 Files written by **Write SD card** are assigned directly; a separate hardware WAV-import step is not required.
+
+### Smarter categories and sorting
+
+The classifier recognizes complete words, common abbreviations (`BD`, `SD`, `OH`, `CH`, `CYM`), plurals, camel case and names joined to numbers. Specific sounds outrank generic hints: `808_kick` is Kick, `RideBell` is Ride, and `CowBell` is Cowbell. `Bells`, `Openhat`, `Tamb` and `Tambhat` are recognized. It does not inspect audio content.
+
+When a filename has no clear instrument, up to three parent-folder names are used as hints, nearest folder first. Folder hints are captured on new imports. Explicit filename instruments always win over folder labels.
+
+Use **Sort** above the sound list to order by Name, Sound type, Shortest first or Longest first. Use **Re-sort → Unsorted & automatic categories** to apply the improved classifier to existing sounds without changing recorded manual choices. Older library entries did not track whether categories were manual, so their existing non-Unsorted categories are preserved by this option. To reclassify those too, choose **All sounds, including manual…** and review the confirmation.
+
+**Undo last re-sort** restores previous categories during the current session, while preserving individual manual edits made afterward. Pad assignments and channel settings are unaffected. Right-click category changes are marked as manual.
 
 ### Audio formats and preview
 
@@ -127,7 +139,7 @@ If a release upload is interrupted after pushing its tag, use `gh release create
 swift test
 ```
 
-Eleven automated tests cover batch import, category changes, managed copies, persistence, per-pad and bank-wide channel settings, direct card writing on temporary replicas, header validation, preservation of other pads, rollback, concurrent card changes and malformed input. Update-specific tests check version ordering, release-origin restrictions and checksum failure handling. The optional twelfth test skips unless a card path is provided:
+Sixteen automated tests cover batch import, category changes, managed copies, persistence, per-pad and bank-wide channel settings, direct card writing on temporary replicas, header validation, preservation of other pads, rollback, concurrent card changes and malformed input. Update-specific tests check version ordering, release-origin restrictions and checksum failure handling. Classifier tests cover sample-pack names, false-positive prevention, folder fallback, re-sort undo and list ordering. A footer layout test checks that long status text grows vertically at narrow widths. The optional seventeenth test skips unless a card path is provided:
 
 ```sh
 PADSHELF_TEST_CARD='/Volumes/SP-404SX' swift test --filter CardTests.testMountedCardReadOnlyWhenProvided
@@ -146,6 +158,8 @@ Sources/PadShelf/
   CardConnection.swift          Card detection, write review and eject controls
   CardWriter.swift              Roland file encoding, backup, write and rollback
   AppUpdater.swift              GitHub release checks and verified installer downloads
+  SoundClassifier.swift         Instrument vocabulary and list sorting
+  StatusFooter.swift            Adaptive status footer
 Tests/PadShelfTests/             Library and card-writer tests
 scripts/build-icon.sh           macOS icon packaging
 scripts/package-dmg.sh          Installable disk image packaging
