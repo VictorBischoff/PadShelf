@@ -9,7 +9,7 @@ let banks = Array("ABCDEFGHIJ").map(String.init)
 func categoryColor(_ category: String) -> Color {
     switch category { case "Kick": return accent; case "Snare": return .yellow; case "Hi-hat", "Open hi-hat", "Closed hi-hat": return .mint; case "Crash", "Ride", "Splash", "China", "Cymbal": return .teal; case "Bell", "Cowbell": return .orange; case "Clap", "Rimshot": return .yellow; case "Percussion", "Tom", "Shaker", "Tambourine", "Conga", "Bongo": return .green; case "Breaks": return .orange; case "Bass": return .purple; case "Melodic": return .cyan; case "Vocal": return .pink; case "FX": return .indigo; default: return .gray }
 }
-struct Sample: Identifiable, Codable {
+struct Sample: Identifiable, Codable, Equatable {
     var id: UUID
     var name: String
     var file: String
@@ -20,11 +20,14 @@ struct Sample: Identifiable, Codable {
     var categoryIsManual: Bool? = nil
     var sourceFolders: [String]? = nil
 }
-struct Session: Codable { var samples: [Sample] = []; var pads: [String: UUID] = [:]; var modes: [String: String]? = [:] }
+struct Session: Codable, Equatable { var samples: [Sample] = []; var pads: [String: UUID] = [:]; var modes: [String: String]? = [:]; var kits: [SavedKit]? = nil; var activeKitID: UUID? = nil }
 struct AppFailure: LocalizedError { var message: String; var errorDescription: String? { message } }
 
 @MainActor final class Library: ObservableObject {
     @Published var session = Session()
+    @Published var undoHistory: [HistoryEntry] = []
+    @Published var redoHistory: [HistoryEntry] = []
+    @Published var showingKits = false
     @Published var category = "All sounds"
     @Published var search = ""
     @Published var sort: SampleSort = .name
@@ -97,8 +100,10 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
                 }
                 return (added, failures)
             }.value
+            let before = snapshot
             session.samples += result.0
             if let target, let first = result.0.first { session.pads[target] = first.id }
+            recordEdit(before, "Import sounds")
             save(); busy = false; status = "Imported \(result.0.count) sounds" + (result.1.isEmpty ? ". Ready to arrange." : "; \(result.1.count) could not be read.")
             if !result.1.isEmpty { error = result.1.prefix(8).joined(separator: "\n") }
         }
@@ -113,9 +118,9 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
         } catch { self.error = error.localizedDescription }
     }
     func stop() { player?.stop(); playing = nil; playbackTimer?.invalidate(); playbackTimer = nil }
-    func assign(_ id: UUID, to key: String) { guard sample(id) != nil, !busy else { return }; session.pads[key] = id; save(); status = "Assigned sound to \(key)." }
+    func assign(_ id: UUID, to key: String) { guard sample(id) != nil, !busy, writable else { return }; let before = snapshot; defer { recordEdit(before, "Assign sound") }; session.pads[key] = id; save(); status = "Assigned sound to \(key)." }
     func mode(_ key: String) -> String { session.modes?[key] ?? (sample(session.pads[key])?.channels == 1 ? "Mono" : "Stereo") }
-    func setMode(_ mode: String, key: String) { if session.modes == nil { session.modes = [:] }; session.modes?[key] = mode; save() }
+    func setMode(_ mode: String, key: String) { guard !busy, writable else { return }; let before = snapshot; defer { recordEdit(before, "Change pad output") }; if session.modes == nil { session.modes = [:] }; session.modes?[key] = mode; save() }
     func bankMode(_ bank: String) -> String {
         let modes = Set((1...12).compactMap { pad -> String? in
             let key = "\(bank)-\(pad)"
@@ -125,6 +130,7 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
     }
     func setBankMode(_ mode: String, bank: String) {
         guard !busy, writable, banks.contains(bank), ["Stereo", "Mono"].contains(mode) else { return }
+        let before = snapshot; defer { recordEdit(before, "Change bank output") }
         if session.modes == nil { session.modes = [:] }
         var count = 0
         for pad in 1...12 {
@@ -135,10 +141,11 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
         save()
         status = "Bank \(bank): \(count) assigned pads set to \(mode.lowercased())."
     }
-    func clear(_ pad: Int) { session.pads.removeValue(forKey: key(pad)); save() }
-    func recategorize(_ id: UUID, _ value: String) { if let i = session.samples.firstIndex(where: { $0.id == id }) { session.samples[i].category = value; session.samples[i].categoryIsManual = true; classificationUndo.removeValue(forKey: id); save() } }
+    func clear(_ pad: Int) { guard !busy, writable else { return }; let before = snapshot; session.pads.removeValue(forKey: key(pad)); recordEdit(before, "Clear pad"); save() }
+    func recategorize(_ id: UUID, _ value: String) { recategorize([id], as: value) }
     func reclassify(includeManual: Bool = false) {
         guard !busy, writable else { return }
+        let before = snapshot; defer { recordEdit(before, "Re-sort sounds") }
         classificationUndo = [:]
         for i in session.samples.indices {
             let sample = session.samples[i]
@@ -160,6 +167,7 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
     }
     func undoReclassification() {
         guard !busy, writable else { return }
+        let before = snapshot; defer { recordEdit(before, "Restore categories") }
         for i in session.samples.indices {
             if let original = classificationUndo[session.samples[i].id] {
                 session.samples[i].category = original.category
@@ -169,6 +177,8 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
         classificationUndo = [:]; save(); status = "Previous sound categories restored."
     }
     func remove(_ id: UUID) {
+        guard !busy, writable else { return }
+        let before = snapshot; defer { recordEdit(before, "Remove sound") }
         if playing == id { stop() }
         session.samples.removeAll { $0.id == id }; session.pads = session.pads.filter { $0.value != id }; selection.remove(id); if selected == id { selected = nil }; save()
     }
@@ -343,6 +353,11 @@ struct ContentView: View {
                     Button("Undo last re-sort") { library.undoReclassification() }.disabled(library.classificationUndo.isEmpty)
                 }.fixedSize().disabled(library.busy || library.session.samples.isEmpty)
             }.controlSize(.small).padding(.bottom, 12)
+            Menu("Set selected sound type…") {
+                ForEach(categories, id: \.self) { category in
+                    Button(category) { library.recategorize(library.selectedSamples.map(\.id), as: category) }
+                }
+            }.disabled(library.selectedSamples.isEmpty || library.busy || !library.writable).padding(.bottom, 8)
             HStack {
                 Text("\(library.selectedSamples.count) selected").foregroundStyle(.secondary)
                 Spacer()
@@ -397,6 +412,13 @@ struct ContentView: View {
     }
     var pads: some View {
         VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Button("Saved kits…") { library.showingKits = true }.disabled(library.busy || !library.writable)
+                Text((library.activeKit?.name ?? "Unsaved kit") + (library.kitChanged ? " · Modified" : "")).lineLimit(1).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button { library.undoEdit() } label: { Image(systemName: "arrow.uturn.backward") }.help("Undo " + (library.undoHistory.last?.name ?? "")).disabled(!library.canUndo)
+                Button { library.redoEdit() } label: { Image(systemName: "arrow.uturn.forward") }.help("Redo " + (library.redoHistory.last?.name ?? "")).disabled(!library.canRedo)
+            }
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) { Text("Build your bank.").font(.system(size: 27, weight: .semibold)); Text("SP-404SX layout  /  12 pads per bank").font(.system(size: 12)).foregroundStyle(.secondary) }
                 Spacer()
@@ -475,7 +497,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @StateObject var library = Library()
     @StateObject var updater = AppUpdater()
     var body: some Scene {
-        WindowGroup("PadShelf") { ContentView().environmentObject(library).sheet(isPresented: $updater.presented) { UpdateView(updater: updater) } }.defaultSize(width: 1120, height: 860)
-        .commands { CommandGroup(after: .appInfo) { Button("Check for Updates…") { updater.check() }.disabled(library.busy || updater.working) }; CommandGroup(replacing: .newItem) { Button("Import sounds…") { library.chooseImport() }.keyboardShortcut("i"); Button("Export WAV kit…") { library.export() }.keyboardShortcut("e").disabled(library.session.pads.isEmpty || library.busy) }; CommandGroup(after: .pasteboard) { Button("Stop preview") { library.stop() }.keyboardShortcut(".") } }
+        WindowGroup("PadShelf") { ContentView().environmentObject(library).sheet(isPresented: $library.showingKits) { KitPanel().environmentObject(library) }.sheet(isPresented: $updater.presented) { UpdateView(updater: updater) } }.defaultSize(width: 1120, height: 860)
+        .commands { CommandGroup(replacing: .undoRedo) {
+            Button("Undo " + (library.textEditor == nil ? library.undoHistory.last?.name ?? "" : "")) { library.undoCommand() }.keyboardShortcut("z").disabled(!library.canUndo && library.textEditor == nil)
+            Button("Redo " + (library.textEditor == nil ? library.redoHistory.last?.name ?? "" : "")) { library.redoCommand() }.keyboardShortcut("z", modifiers: [.command, .shift]).disabled(!library.canRedo && library.textEditor == nil)
+        }; CommandGroup(after: .appInfo) { Button("Check for Updates…") { updater.check() }.disabled(library.busy || updater.working) }; CommandGroup(replacing: .newItem) { Button("Import sounds…") { library.chooseImport() }.keyboardShortcut("i"); Button("Export WAV kit…") { library.export() }.keyboardShortcut("e").disabled(library.session.pads.isEmpty || library.busy) }; CommandGroup(after: .pasteboard) { Button("Stop preview") { library.stop() }.keyboardShortcut(".") } }
     }
 }

@@ -44,8 +44,10 @@ extension Library {
         let empty = (start...12).map { "\(bank)-\($0)" }.filter {
             session.pads[$0] == nil && connectedCard?.contains($0) != true
         }
+        let before = snapshot
         let assignments = Array(zip(sounds, empty))
         for (id, key) in assignments { session.pads[key] = id }
+        recordEdit(before, "Assign selected sounds")
         if !assignments.isEmpty { save() }
         let skipped = sounds.count - assignments.count
         status = "Assigned \(assignments.count) sounds to bank \(bank)." +
