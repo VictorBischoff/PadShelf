@@ -7,7 +7,7 @@ let accent = Color(red: 0.96, green: 0.40, blue: 0.22)
 let surface = Color(red: 0.105, green: 0.115, blue: 0.125)
 let banks = Array("ABCDEFGHIJ").map(String.init)
 func categoryColor(_ category: String) -> Color {
-    switch category { case "Kick": return accent; case "Snare": return .yellow; case "Hi-hat", "Open hi-hat", "Closed hi-hat": return .mint; case "Crash", "Ride", "Splash", "China", "Cymbal": return .teal; case "Bell", "Cowbell": return .orange; case "Clap", "Rimshot": return .yellow; case "Percussion", "Tom", "Shaker", "Tambourine", "Conga", "Bongo": return .green; case "Bass": return .purple; case "Melodic": return .cyan; case "Vocal": return .pink; case "FX": return .indigo; default: return .gray }
+    switch category { case "Kick": return accent; case "Snare": return .yellow; case "Hi-hat", "Open hi-hat", "Closed hi-hat": return .mint; case "Crash", "Ride", "Splash", "China", "Cymbal": return .teal; case "Bell", "Cowbell": return .orange; case "Clap", "Rimshot": return .yellow; case "Percussion", "Tom", "Shaker", "Tambourine", "Conga", "Bongo": return .green; case "Breaks": return .orange; case "Bass": return .purple; case "Melodic": return .cyan; case "Vocal": return .pink; case "FX": return .indigo; default: return .gray }
 }
 struct Sample: Identifiable, Codable {
     var id: UUID

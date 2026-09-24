@@ -14,17 +14,21 @@ final class SortingTests: XCTestCase {
             "Splash03": "Splash", "cymbals_09": "Cymbal", "tubular_bells": "Bell",
             "FloorTom_01": "Tom", "HandClap01": "Clap", "snare_rimshot": "Rimshot",
             "cabasa_loop": "Shaker", "congas": "Conga", "bongos_02": "Bongo",
-            "piano_loop_808": "Melodic", "sub_bass": "Bass", "808": "Bass"
+            "Amen_Break_170": "Breaks", "FunkyDrumBreak02": "Breaks",
+            "breakbeats_90bpm": "Breaks", "BRK_01": "Breaks", "break_808_loop": "Breaks",
+            "kick_from_break": "Kick", "piano_loop_808": "Melodic", "sub_bass": "Bass", "808": "Bass"
         ]
         for (name, expected) in examples { XCTAssertEqual(classify(name), expected, name) }
     }
     func testNoSubstringFalsePositivesAndFolderFallback() {
-        for name in ["bride", "crashing", "bellows", "tomorrow", "submarine", "hatred", "kickstarter", "chordless", "recording07"] {
+        for name in ["bride", "crashing", "bellows", "tomorrow", "submarine", "hatred", "kickstarter", "chordless", "recording07", "breakfast", "heartbreak", "breakdown"] {
             XCTAssertEqual(classify(name), "Unsorted", name)
         }
         XCTAssertEqual(SoundClassifier.classify("001", folders: ["Crashes", "Cymbals"]), "Crash")
         XCTAssertEqual(SoundClassifier.classify("loop_01", folders: ["Bells"]), "Bell")
         XCTAssertEqual(SoundClassifier.classify("snare01", folders: ["Kicks"]), "Snare")
+        XCTAssertEqual(SoundClassifier.classify("loop_01", folders: ["Breaks"]), "Breaks")
+        XCTAssertEqual(SoundClassifier.classify("snare01", folders: ["Breaks"]), "Snare")
     }
     @MainActor func testResortingPreservesManualAndLegacyChoicesAndCanUndo() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -11,7 +11,7 @@ Built with Swift, SwiftUI, AppKit and AVFoundation. Runs on **macOS 13 or later*
 ## Features
 
 - **Batch import:** select multiple files or drop whole folders into the library.
-- **Sound categories:** kick, snare, clap, rimshot, generic/open/closed hi-hat, crash, ride, splash, china, cymbal, bell, cowbell, tom, shaker, tambourine, conga, bongo, percussion, bass, melodic, vocal, FX and unsorted. Suggestions use filename tokens and folder hints and remain editable.
+- **Sound categories:** kick, snare, clap, rimshot, generic/open/closed hi-hat, crash, ride, splash, china, cymbal, bell, cowbell, tom, shaker, tambourine, conga, bongo, percussion, breaks, bass, melodic, vocal, FX and unsorted. Suggestions use filename tokens and folder hints and remain editable.
 - **Pad arrangement:** ten banks, A–J, with twelve pads each. Drag sounds onto pads or use the assignment context menu.
 - **Audio preview:** audition samples from the library or assigned pads.
 - **Stereo/Mono:** choose per pad or apply to every assigned pad in a bank.
@@ -45,7 +45,7 @@ Files written by **Write SD card** are assigned directly; a separate hardware WA
 
 ### Smarter categories and sorting
 
-The classifier recognizes complete words, common abbreviations (`BD`, `SD`, `OH`, `CH`, `CYM`), plurals, camel case and names joined to numbers. Specific sounds outrank generic hints: `808_kick` is Kick, `RideBell` is Ride, and `CowBell` is Cowbell. `Bells`, `Openhat`, `Tamb` and `Tambhat` are recognized. It does not inspect audio content.
+The classifier recognizes complete words, common abbreviations (`BD`, `SD`, `OH`, `CH`, `CYM`), plurals, camel case and names joined to numbers. Specific sounds outrank generic hints: `808_kick` is Kick, `RideBell` is Ride, and `CowBell` is Cowbell. `Bells`, `Openhat`, `Tamb` and `Tambhat` are recognized. Breaks recognizes names such as `Amen_Break`, `DrumBreak`, `breakbeat` and `BRK`, plus Breaks folder hints. Explicit single-hit names such as `kick_from_break` stay in their instrument category. It does not inspect audio content.
 
 When a filename has no clear instrument, up to three parent-folder names are used as hints, nearest folder first. Folder hints are captured on new imports. Explicit filename instruments always win over folder labels.
 

@@ -1,6 +1,6 @@
 import Foundation
 
-let categories = ["Kick", "Snare", "Clap", "Rimshot", "Hi-hat", "Open hi-hat", "Closed hi-hat", "Crash", "Ride", "Splash", "China", "Cymbal", "Bell", "Cowbell", "Tom", "Shaker", "Tambourine", "Conga", "Bongo", "Percussion", "Bass", "Melodic", "Vocal", "FX", "Unsorted"]
+let categories = ["Kick", "Snare", "Clap", "Rimshot", "Hi-hat", "Open hi-hat", "Closed hi-hat", "Crash", "Ride", "Splash", "China", "Cymbal", "Bell", "Cowbell", "Tom", "Shaker", "Tambourine", "Conga", "Bongo", "Percussion", "Breaks", "Bass", "Melodic", "Vocal", "FX", "Unsorted"]
 
 /// Filename vocabulary, not audio-content recognition. Specific instruments outrank
 /// generic kit/loop/808 hints; whole tokens prevent matches like "bride" → "Ride".
@@ -29,6 +29,7 @@ enum SoundClassifier {
         .init(category: "Shaker", score: 100, aliases: ["shaker", "shakers", "shk", "maraca", "maracas", "cabasa"]),
         .init(category: "Conga", score: 100, aliases: ["conga", "congas", "tumba", "quinto"]),
         .init(category: "Bongo", score: 100, aliases: ["bongo", "bongos"]),
+        .init(category: "Breaks", score: 90, aliases: ["break", "breaks", "breakbeat", "breakbeats", "break beat", "break beats", "drumbreak", "drumbreaks", "drum break", "drum breaks", "brk"]),
         .init(category: "Cymbal", score: 80, aliases: ["cymbal", "cymbals", "cym", "cymb", "cymbale"]),
         .init(category: "Percussion", score: 60, aliases: ["perc", "percussion", "triangle", "clave", "claves", "woodblock", "wood block", "guiro", "djembe", "timbale", "timbales", "tabla"]),
         .init(category: "Bass", score: 55, aliases: ["bass", "sub", "subbass", "sub bass"]),
