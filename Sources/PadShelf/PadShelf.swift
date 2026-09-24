@@ -30,6 +30,7 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
     @Published var sort: SampleSort = .name
     @Published var classificationUndo: [UUID: Sample] = [:]
     @Published var bank = "A"
+    @Published var selection: Set<UUID> = []
     @Published var selected: UUID?
     @Published var playing: UUID?
     @Published var busy = false
@@ -169,13 +170,13 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
     }
     func remove(_ id: UUID) {
         if playing == id { stop() }
-        session.samples.removeAll { $0.id == id }; session.pads = session.pads.filter { $0.value != id }; if selected == id { selected = nil }; save()
+        session.samples.removeAll { $0.id == id }; session.pads = session.pads.filter { $0.value != id }; selection.remove(id); if selected == id { selected = nil }; save()
     }
     func receive(_ providers: [NSItemProvider], target: String? = nil) -> Bool {
         guard !busy else { return false }
         if let item = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) }), let target {
             item.loadObject(ofClass: NSString.self) { object, _ in
-                if let text = object as? String, let id = UUID(uuidString: text) { Task { @MainActor in self.assign(id, to: target) } }
+                if let text = object as? String { Task { @MainActor in self.receiveSampleText(text, target: target) } }
             }; return true
         }
         let items = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
@@ -330,7 +331,7 @@ struct ContentView: View {
     var soundList: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack { Text(library.category).font(.system(size: 22, weight: .semibold)); Spacer(); Text("\(library.visible.count)").foregroundStyle(.secondary) }.padding(.bottom, 5)
-            Text("Preview a sound. Drag it to a pad.").font(.system(size: 12)).foregroundStyle(.secondary)
+            Text("⌘-click to select · Shift-click for a range").font(.system(size: 12)).foregroundStyle(.secondary)
             TextField("Search sounds", text: $library.search).textFieldStyle(.roundedBorder).padding(.top, 14).padding(.bottom, 10)
             HStack {
                 Picker("Sort", selection: $library.sort) { ForEach(SampleSort.allCases) { Text($0.rawValue).tag($0) } }.frame(maxWidth: 185)
@@ -342,6 +343,12 @@ struct ContentView: View {
                     Button("Undo last re-sort") { library.undoReclassification() }.disabled(library.classificationUndo.isEmpty)
                 }.fixedSize().disabled(library.busy || library.session.samples.isEmpty)
             }.controlSize(.small).padding(.bottom, 12)
+            HStack {
+                Text("\(library.selectedSamples.count) selected").foregroundStyle(.secondary)
+                Spacer()
+                Button("Select all") { library.selection = Set(library.visible.map(\.id)); library.selected = library.visible.first?.id }
+                Button("Clear") { library.selection = []; library.selected = nil }.disabled(library.selection.isEmpty)
+            }.font(.system(size: 10)).buttonStyle(.plain).padding(.bottom, 10)
             if library.visible.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "waveform.badge.plus").font(.system(size: 36, weight: .light)).foregroundStyle(accent)
@@ -354,6 +361,10 @@ struct ContentView: View {
                     LazyVStack(spacing: 5) {
                         ForEach(library.visible) { sample in
                             HStack(spacing: 10) {
+                                Button { library.select(sample.id, extending: true) } label: {
+                                    Image(systemName: library.selection.contains(sample.id) ? "checkmark.square.fill" : "square")
+                                        .foregroundStyle(library.selection.contains(sample.id) ? accent : .secondary)
+                                }.buttonStyle(.plain).accessibilityLabel("Select \(sample.name)")
                                 Button { library.preview(sample) } label: { Image(systemName: library.playing == sample.id ? "stop.fill" : "play.fill").font(.system(size: 10)).foregroundStyle(categoryColor(sample.category)).frame(width: 30, height: 32).background(categoryColor(sample.category).opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: 6)) }.buttonStyle(.plain)
                                 VStack(alignment: .leading, spacing: 5) {
                                     Text(sample.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
@@ -361,9 +372,12 @@ struct ContentView: View {
                                 }
                                 Spacer(minLength: 0)
                                 Image(systemName: "line.3.horizontal").font(.system(size: 10)).foregroundStyle(.tertiary)
-                            }.padding(9).background(library.selected == sample.id ? Color.white.opacity(0.10) : surface).clipShape(RoundedRectangle(cornerRadius: 7))
-                            .contentShape(Rectangle()).onTapGesture { library.selected = sample.id }
-                            .onDrag { library.selected = sample.id; return NSItemProvider(object: sample.id.uuidString as NSString) }
+                            }.padding(9).background(library.selection.contains(sample.id) ? Color.white.opacity(0.10) : surface).clipShape(RoundedRectangle(cornerRadius: 7))
+                            .contentShape(Rectangle()).onTapGesture {
+                                let modifiers = NSEvent.modifierFlags
+                                library.select(sample.id, extending: modifiers.contains(.command), range: modifiers.contains(.shift))
+                            }
+                            .onDrag { NSItemProvider(object: library.dragText(for: sample.id) as NSString) }
                             .contextMenu {
                                 Button("Preview") { library.preview(sample) }
                                 Menu("Sound type") { ForEach(categories, id: \.self) { category in Button(category) { library.recategorize(sample.id, category) } } }
@@ -377,6 +391,8 @@ struct ContentView: View {
             Divider().padding(.top, 12)
             Text("Types use filenames and folder hints.\nRight-click to set a type; Re-sort to update.").font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 12)
         }.padding(20).background(libraryDrop ? accent.opacity(0.06) : .clear)
+        .onChange(of: library.category) { _ in library.selection = []; library.selected = nil }
+        .onChange(of: library.search) { _ in library.selection = []; library.selected = nil }
         .onDrop(of: [UTType.fileURL], isTargeted: $libraryDrop) { library.receive($0) }
     }
     var pads: some View {
@@ -405,7 +421,7 @@ struct ContentView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
                 ForEach(1...12, id: \.self) { pad in PadView(pad: pad).id(library.key(pad)) }
             }
-            HStack { Image(systemName: "cursorarrow.motionlines"); Text("Drag to assign · Click to preview · Right-click to clear") }.font(.system(size: 10)).foregroundStyle(.secondary)
+            HStack { Image(systemName: "cursorarrow.motionlines"); Text("Group drops fill empty pads from here onward · Extras are skipped") }.font(.system(size: 10)).foregroundStyle(.secondary)
             Spacer(minLength: 0)
             HStack(spacing: 12) {
                 Image(systemName: "waveform").font(.title2).foregroundStyle(accent)
@@ -442,7 +458,9 @@ struct PadView: View {
         .onTapGesture { if let sample { library.preview(sample) } }
         .onDrop(of: [UTType.plainText, UTType.fileURL], isTargeted: $targeted) { library.receive($0, target: library.key(pad)) }
         .contextMenu {
-            if let id = library.selected { Button("Assign selected sound") { library.assign(id, to: library.key(pad)) } }
+            if library.selectedSamples.count > 1 {
+                Button("Assign \(library.selectedSamples.count) selected sounds to empty pads") { library.assignGroup(library.selectedSamples.map(\.id), startingAt: library.key(pad)) }
+            } else if let id = library.selectedSamples.first?.id { Button("Assign selected sound") { library.assign(id, to: library.key(pad)) } }
             if let sample { Button("Preview") { library.preview(sample) }; Button("Clear pad", role: .destructive) { library.clear(pad) } }
         }
         .accessibilityLabel("Bank \(library.bank), pad \(pad), \(sample?.name ?? "empty")")
