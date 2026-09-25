@@ -261,6 +261,8 @@ struct AppFailure: LocalizedError { var message: String; var errorDescription: S
 }
 
 struct ContentView: View {
+    @State private var bankActionSource: String?
+    @State private var showingBankActions = false
     @EnvironmentObject var library: Library
     @State private var libraryDrop = false
     var body: some View {
@@ -288,6 +290,7 @@ struct ContentView: View {
             StatusFooter(status: library.status, busy: library.busy)
         }.background(Color(red: 0.07, green: 0.08, blue: 0.09)).preferredColorScheme(.dark)
         .frame(minWidth: 1000, minHeight: 600)
+        .sheet(isPresented: $showingBankActions) { BankActionPanel(source: bankActionSource ?? library.bank).environmentObject(library) }
         .alert("PadShelf", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) { Button("OK") { library.error = nil } } message: { Text(library.error ?? "") }
     }
     var cardConnection: some View {
@@ -440,6 +443,15 @@ struct ContentView: View {
                 }.fixedSize().disabled(library.busy || library.bankMode(library.bank) == "Empty")
                 .help("Apply Stereo or Mono to every assigned pad in this bank. You can still change individual pads afterward.")
             }
+            HStack {
+                Button("Fill empty pads") { library.fillSelected() }
+                    .disabled(library.selectedSamples.isEmpty || library.emptyPadCount(library.bank) == 0 || library.busy || !library.writable)
+                    .help("Place selected sounds in list order. Occupied pads stay unchanged. Sounds that fit are deselected; extras remain selected for the next bank.")
+                Text("\(min(library.selectedSamples.count, library.emptyPadCount(library.bank))) to place · \(library.emptyPadCount(library.bank)) free")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                Button("Bank actions…") { bankActionSource = library.bank; showingBankActions = true }.disabled(library.busy || !library.writable)
+            }.controlSize(.small)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
                 ForEach(1...12, id: \.self) { pad in PadView(pad: pad).id(library.key(pad)) }
             }

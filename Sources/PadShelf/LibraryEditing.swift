@@ -10,6 +10,8 @@ struct SavedKit: Identifiable, Codable, Equatable {
 struct EditSnapshot {
     var session: Session
     var classificationUndo: [UUID: Sample]
+    var selection: Set<UUID>? = nil
+    var selected: UUID? = nil
 }
 struct HistoryEntry {
     var name: String
@@ -21,6 +23,12 @@ extension Library {
     func undoCommand() { if let editor = textEditor { editor.undoManager?.undo() } else { undoEdit() } }
     func redoCommand() { if let editor = textEditor { editor.undoManager?.redo() } else { redoEdit() } }
     var snapshot: EditSnapshot { EditSnapshot(session: session, classificationUndo: classificationUndo) }
+    var snapshotIncludingSelection: EditSnapshot {
+        var result = snapshot
+        result.selection = selection
+        result.selected = selected
+        return result
+    }
     var canUndo: Bool { !busy && writable && !undoHistory.isEmpty }
     var canRedo: Bool { !busy && writable && !redoHistory.isEmpty }
     func recordEdit(_ before: EditSnapshot, _ name: String) {
@@ -33,18 +41,22 @@ extension Library {
         stop()
         session = snapshot.session
         classificationUndo = snapshot.classificationUndo
+        if let restoredSelection = snapshot.selection {
+            selection = restoredSelection
+            selected = snapshot.selected
+        }
         selection = selection.intersection(Set(session.samples.map(\.id)))
         if sample(selected) == nil { selected = nil }
         save()
     }
     func undoEdit() {
         guard canUndo, let entry = undoHistory.popLast() else { return }
-        redoHistory.append(HistoryEntry(name: entry.name, snapshot: snapshot))
+        redoHistory.append(HistoryEntry(name: entry.name, snapshot: entry.snapshot.selection == nil ? snapshot : snapshotIncludingSelection))
         restore(entry.snapshot); status = "Undid \(entry.name.lowercased())."
     }
     func redoEdit() {
         guard canRedo, let entry = redoHistory.popLast() else { return }
-        undoHistory.append(HistoryEntry(name: entry.name, snapshot: snapshot))
+        undoHistory.append(HistoryEntry(name: entry.name, snapshot: entry.snapshot.selection == nil ? snapshot : snapshotIncludingSelection))
         restore(entry.snapshot); status = "Redid \(entry.name.lowercased())."
     }
     func recategorize(_ ids: [UUID], as category: String) {

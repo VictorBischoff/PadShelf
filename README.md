@@ -16,6 +16,8 @@ Built with Swift, SwiftUI, AppKit and AVFoundation. Runs on **macOS 13 or later*
 - **Undo/redo:** reverse imports, removals, category changes, pad assignments, channel settings and kit edits with the arrow buttons or Command-Z / Shift-Command-Z. The last 100 edits are available during the current app session; a new edit clears redo. Undo does not reverse SD-card writes or exported files.
 - **Saved kits:** save named arrangements of all ten banks and their stereo/mono settings. Load, update, delete or start an empty kit from Saved kits. Changes are marked Modified until you update the kit. The library is shared; kits retain references to managed sounds, and loading restores sounds removed from the library. Switching kits is undoable.
 - **Multi-selection:** use checkboxes, Command-click, Shift-click ranges, or Select all. Drag a selected row to place the group in list order into empty pads from the drop position through pad 12 of that bank. Occupied pads (including known card sounds) are preserved; excess samples are skipped and remain in the library. A single-sound drag can still replace a pad.
+- **Fill empty pads:** place selected sounds in list order, leaving occupied pads untouched. Placed sounds are deselected; extras remain selected for the next bank. Undo and redo restore the selection queue and range-selection anchor along with assignments.
+- **Bank actions:** copy, move, swap or clear local bank assignments, preserving pad positions and channel settings. Destination assignments are replaced; sounds already on the SD card are not copied or erased. Actions are undoable.
 - **Pad arrangement:** ten banks, A–J, with twelve pads each. Drag sounds onto pads or use the assignment context menu.
 - **Audio preview:** audition samples from the library or assigned pads.
 - **Stereo/Mono:** choose per pad or apply to every assigned pad in a bank.
@@ -143,7 +145,7 @@ If a release upload is interrupted after pushing its tag, use `gh release create
 swift test
 ```
 
-Twenty-four automated tests cover batch import, category changes, managed copies, persistence, per-pad and bank-wide channel settings, direct card writing on temporary replicas, header validation, preservation of other pads, rollback, concurrent card changes and malformed input. Update-specific tests check version ordering, release-origin restrictions and checksum failure handling. Classifier tests cover sample-pack names, false-positive prevention, folder fallback, re-sort undo and list ordering. A footer layout test checks that long status text grows vertically at narrow widths. The optional twenty-fifth test skips unless a card path is provided:
+Twenty-five automated tests cover batch import, category changes, managed copies, persistence, per-pad and bank-wide channel settings, direct card writing on temporary replicas, header validation, preservation of other pads, rollback, concurrent card changes and malformed input. Update-specific tests check version ordering, release-origin restrictions and checksum failure handling. Classifier tests cover sample-pack names, false-positive prevention, folder fallback, re-sort undo and list ordering. A footer layout test checks that long status text grows vertically at narrow widths. Fill tests cover undo, redo and retrying in another bank without losing the selection queue. The optional twenty-sixth test skips unless a card path is provided:
 
 ```sh
 PADSHELF_TEST_CARD='/Volumes/SP-404SX' swift test --filter CardTests.testMountedCardReadOnlyWhenProvided

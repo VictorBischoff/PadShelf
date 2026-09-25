@@ -34,17 +34,18 @@ extension Library {
         assignGroup(ids, startingAt: target)
     }
 
-    func assignGroup(_ ids: [UUID], startingAt target: String) {
+    @discardableResult func assignGroup(_ ids: [UUID], startingAt target: String, restoringSelectionOnUndo: Bool = false) -> [UUID] {
         let parts = target.split(separator: "-")
         guard !busy, writable, parts.count == 2, banks.contains(String(parts[0])),
-              let start = Int(parts[1]), (1...12).contains(start) else { return }
+              let start = Int(parts[1]), (1...12).contains(start) else { return [] }
+        guard !ids.isEmpty else { return [] }
         let bank = String(parts[0])
         var seen = Set<UUID>()
         let sounds = ids.filter { sample($0) != nil && seen.insert($0).inserted }
         let empty = (start...12).map { "\(bank)-\($0)" }.filter {
             session.pads[$0] == nil && connectedCard?.contains($0) != true
         }
-        let before = snapshot
+        let before = restoringSelectionOnUndo ? snapshotIncludingSelection : snapshot
         let assignments = Array(zip(sounds, empty))
         for (id, key) in assignments { session.pads[key] = id }
         recordEdit(before, "Assign selected sounds")
@@ -52,5 +53,6 @@ extension Library {
         let skipped = sounds.count - assignments.count
         status = "Assigned \(assignments.count) sounds to bank \(bank)." +
             (skipped > 0 ? " Skipped \(skipped): no remaining empty pads. Skipped sounds stay in your library." : "")
+        return assignments.map { $0.0 }
     }
 }

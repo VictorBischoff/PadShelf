@@ -11,6 +11,44 @@ final class SelectionTests: XCTestCase {
         try action(library)
     }
 
+    @MainActor func testFillUndoRedoRestoresQueueAndAnchor() throws {
+        try withLibrary { library in
+            library.session.samples = (1...13).map { Sample(id: UUID(), name: "Sound\($0)", file: "test.wav", category: "Breaks", duration: 1, rate: 44100, channels: 2) }
+            let ids = library.visible.map(\.id)
+            library.selection = Set(ids)
+            library.selected = ids[0]
+            library.fillSelected()
+            let filledPads = library.session.pads
+            XCTAssertEqual(filledPads.count, 12)
+            XCTAssertEqual(library.selection, [ids[12]])
+            XCTAssertNil(library.selected)
+            library.undoEdit()
+            XCTAssertTrue(library.session.pads.isEmpty)
+            XCTAssertEqual(library.selection, Set(ids))
+            XCTAssertEqual(library.selected, ids[0])
+            library.redoEdit()
+            XCTAssertEqual(library.session.pads, filledPads)
+            XCTAssertEqual(library.selection, [ids[12]])
+            XCTAssertNil(library.selected)
+            library.undoEdit()
+            library.bank = "B"
+            library.fillSelected()
+            XCTAssertEqual(library.session.pads["B-1"], ids[0])
+            XCTAssertEqual(library.session.pads.count, 12)
+            XCTAssertEqual(library.selection, [ids[12]])
+            XCTAssertFalse(library.canRedo)
+            library.bank = "C"
+            library.fillSelected()
+            XCTAssertTrue(library.selection.isEmpty)
+            library.undoEdit()
+            XCTAssertEqual(library.selection, [ids[12]])
+            XCTAssertNil(library.session.pads["C-1"])
+            library.redoEdit()
+            XCTAssertEqual(library.session.pads["C-1"], ids[12])
+            XCTAssertTrue(library.selection.isEmpty)
+        }
+    }
+
     @MainActor func testSelectionRangeToggleAndDragOrder() throws {
         try withLibrary { library in
             let ids = library.visible.map(\.id)
